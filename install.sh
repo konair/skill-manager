@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="your-username/your-repo"
+REPO="konair/skill-manager"
 BRANCH="main"
 INSTALL_DIR="/usr/local/bin"
 SCRIPT_NAME="skills.sh"
