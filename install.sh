@@ -1,72 +1,94 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="konair/skill-manager"
+REPO_OWNER="konair"
+REPO_NAME="skill-manager"
 BRANCH="main"
-INSTALL_DIR="/usr/local/bin"
-SCRIPT_NAME="skills.sh"
-RAW_URL="<https://raw.githubusercontent.com/$REPO/$BRANCH/$SCRIPT_NAME>"
 
-# Colors
-RED='\\033[0;31m'
-GREEN='\\033[0;32m'
-YELLOW='\\033[1;33m'
-NC='\\033[0m'
+RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}"
+SKILLS_URL="${RAW_BASE}/skills.sh"
 
-info()    { echo -e "${GREEN}[skills]${NC} $*"; }
-warning() { echo -e "${YELLOW}[skills]${NC} $*"; }
-error()   { echo -e "${RED}[skills]${NC} $*" >&2; exit 1; }
+INSTALL_DIR="${HOME}/.local/bin"
+INSTALL_PATH="${INSTALL_DIR}/skills"
 
-# Check OS
-if [[ "$(uname -s)" != "Linux" ]]; then
-  error "This installer currently supports Linux only."
-fi
-
-# Check dependencies
-info "Checking dependencies..."
-
-if ! command -v docker &>/dev/null; then
-  error "Docker is not installed. Install it first: <https://docs.docker.com/engine/install/ubuntu/>"
-fi
-
-if ! command -v curl &>/dev/null; then
-  error "curl is not installed. Run: sudo apt-get install -y curl"
-fi
-
-# Determine install directory (no sudo needed if ~/.local/bin)
-if [[ -w "$INSTALL_DIR" ]]; then
-  TARGET="$INSTALL_DIR/$SCRIPT_NAME"
-elif [[ -n "${SUDO_USER:-}" ]] || command -v sudo &>/dev/null; then
-  TARGET="$INSTALL_DIR/$SCRIPT_NAME"
-  USE_SUDO=true
+if [ -t 1 ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]; then
+  GREEN='\033[0;32m'
+  RED='\033[0;31m'
+  YELLOW='\033[1;33m'
+  BLUE='\033[0;34m'
+  NC='\033[0m'
 else
-  INSTALL_DIR="$HOME/.local/bin"
-  mkdir -p "$INSTALL_DIR"
-  TARGET="$INSTALL_DIR/$SCRIPT_NAME"
-  warning "No sudo available, installing to $INSTALL_DIR"
+  GREEN=''
+  RED=''
+  YELLOW=''
+  BLUE=''
+  NC=''
 fi
 
-# Download
-info "Downloading skills script from GitHub..."
-TMP=$(mktemp)
-curl -fsSL "$RAW_URL" -o "$TMP" || error "Download failed. Check the URL: $RAW_URL"
-chmod +x "$TMP"
+log() {
+  printf '%b[skills]%b %s\n' "${GREEN}" "${NC}" "$*"
+}
 
-# Install
-if [[ "${USE_SUDO:-false}" == "true" ]]; then
-  sudo mv "$TMP" "$TARGET"
-else
-  mv "$TMP" "$TARGET"
-fi
+warn() {
+  printf '%b[skills]%b %s\n' "${YELLOW}" "${NC}" "$*" >&2
+}
 
-# PATH check
-if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-  warning "$INSTALL_DIR is not in your PATH."
-  warning "Add this to your ~/.bashrc or ~/.zshrc:"
-  echo ""
-  echo "  export PATH=\\"$INSTALL_DIR:\\$PATH\\""
-  echo ""
-fi
+error() {
+  printf '%b[skills]%b %s\n' "${RED}" "${NC}" "$*" >&2
+}
 
-info "Installed successfully → $TARGET"
-info "Run 'skills install' in any project with a .skills file."
+info() {
+  printf '%b[skills]%b %s\n' "${BLUE}" "${NC}" "$*"
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    error "Missing dependency: $1"
+    exit 1
+  fi
+}
+
+main() {
+  log "Checking dependencies..."
+  require_cmd curl
+  require_cmd chmod
+  require_cmd mkdir
+  require_cmd mktemp
+
+  mkdir -p "${INSTALL_DIR}"
+
+  tmp_file="$(mktemp)"
+  trap 'rm -f "${tmp_file}"' EXIT
+
+  log "Downloading skills script from GitHub..."
+  if ! curl -fL --connect-timeout 15 --retry 3 --retry-delay 1 "${SKILLS_URL}" -o "${tmp_file}"; then
+    error "Download failed. Check the URL: ${SKILLS_URL}"
+    exit 1
+  fi
+
+  if [ ! -s "${tmp_file}" ]; then
+    error "Downloaded file is empty: ${SKILLS_URL}"
+    exit 1
+  fi
+
+  chmod +x "${tmp_file}"
+  mv "${tmp_file}" "${INSTALL_PATH}"
+  trap - EXIT
+
+  log "Installed to ${INSTALL_PATH}"
+
+  case ":${PATH}:" in
+    *":${HOME}/.local/bin:"*)
+      log "PATH already contains ${HOME}/.local/bin"
+      ;;
+    *)
+      warn "${HOME}/.local/bin is not in your PATH"
+      info "Add this line to your shell config:"
+      printf '  export PATH="%s/.local/bin:$PATH"\n' "${HOME}"
+      ;;
+  esac
+
+  log "Done. Run: skills --help"
+}
+
+main "$@"
