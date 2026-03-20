@@ -4,7 +4,7 @@ set -euo pipefail
 REPO="your-username/your-repo"
 BRANCH="main"
 INSTALL_DIR="/usr/local/bin"
-SCRIPT_NAME="skills"
+SCRIPT_NAME="skills.sh"
 RAW_URL="<https://raw.githubusercontent.com/$REPO/$BRANCH/$SCRIPT_NAME>"
 
 # Colors
